@@ -1,0 +1,127 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+
+Parameters:
+  MyKeyPair:
+    Type: String
+  
+  EnvironmentName:
+    Type: String
+
+  VPC:
+    Type: String
+
+  PrivateSubnet1:
+    Type: String
+
+  PrivateSubnet2:
+    Type: String
+  
+  ServerSecurityGroup:
+    Type: String
+
+  DesiredCapacity:
+    Type: Number
+    Default: 1
+
+  MinSize:
+    Type: Number
+    Default: 1
+
+  MaxSize:
+    Type: Number
+    Default: 2
+
+  InternalLoadBalancer:
+    Type: String
+
+  TargetGroup:
+    Type: String
+
+Resources:
+  ReadS3BucketRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      RoleName: !Sub "${EnvironmentName}-s3Role"
+
+  ReadS3BucketPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: ReadS3BucketPolicy
+      PolicyDocument:
+        Statement:
+        - Effect: Allow
+          Action:
+          - s3:GetObject
+          - s3:ListBucket 
+          Resource: 
+          - !Sub "arn:aws:s3:::mehdi-php-app"
+          - !Sub "arn:aws:s3:::mehdi-php-app/*"
+      Roles:
+      - Ref: ReadS3BucketRole
+
+  ReadS3BucketInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: "/"
+      Roles:
+      - Ref: ReadS3BucketRole
+
+  AutoScalingLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties: 
+      IamInstanceProfile: !Ref ReadS3BucketInstanceProfile
+      ImageId: ami-09558250a3419e7d0
+      InstanceType: t2.micro
+      KeyName: !Ref MyKeyPair
+      SecurityGroups: 
+        - !Ref ServerSecurityGroup
+      UserData: 
+        Fn::Base64: 
+          Fn::Sub:
+          - |
+            #!/bin/bash
+            yum update -y
+            amazon-linux-extras install -y lamp-mariadb10.2-php7.2 php7.2
+            yum install -y httpd
+            systemctl start httpd
+            systemctl enable httpd
+            groupadd www
+            usermod -a -G www ec2-user
+            chgrp -R www /var/www
+            chmod 2775 /var/www
+            find /var/www -type d -exec sudo chmod 2775 {} +
+            find /var/www -type f -exec sudo chmod 0664 {} +
+            cd /var/www/html
+            aws s3 cp s3://mehdi-php-app/loginsystem/ . --recursive
+            sed -i "s/localhost/${CLBDNS}/g" dbconnection.php
+            sed -i "s/''/'CODE8mate\*'/g" dbconnection.php
+          - CLBDNS: !Ref InternalLoadBalancer
+
+  AustoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier: 
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      #AvailabilityZones: !GetAZs "AWS::Region"
+      LaunchConfigurationName: !Ref AutoScalingLaunchConfiguration
+      MinSize: !Ref MinSize
+      MaxSize: !Ref MaxSize
+      DesiredCapacity: !Ref DesiredCapacity
+      TargetGroupARNs:
+        - !Ref TargetGroup
+      Tags:
+        - Key: Name
+          PropagateAtLaunch: true
+          Value: !Sub ${EnvironmentName}-ASG

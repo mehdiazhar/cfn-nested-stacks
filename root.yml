@@ -1,0 +1,117 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Parameters:
+  BucketName:
+    Type: String
+    Description: Path to the bucket
+    Default: mehdi-templates
+  
+  MyKeyPair:
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: mehdi-assignment1
+
+  EnvironmentName: 
+    Type: String
+    Description: Environment Name
+    AllowedValues:
+      - Dev
+      - Test
+      - Prod
+
+  VPCCidr:
+    Description: VPC CIDR
+    Default: 10.1.0.0/16
+    Type: String
+  
+  PublicSubnet1Cidr:
+    Description: Public Subnet 1
+    Default: 10.1.1.0/24
+    Type: String
+
+  PublicSubnet2Cidr:
+    Description: Public Subnet 2
+    Default: 10.1.2.0/24
+    Type: String
+  
+  PrivateSubnet1Cidr:
+    Description: Private Subnet 1
+    Default: 10.1.3.0/24
+    Type: String
+
+  PrivateSubnet2Cidr:
+    Description: Private Subnet 2
+    Default: 10.1.4.0/24
+    Type: String
+
+
+Resources:
+  VPCStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "https://${BucketName}.s3.us-east-2.amazonaws.com/VPC.yml"
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        VPCCidr: !Ref VPCCidr
+        PublicSubnet1Cidr: !Ref PublicSubnet1Cidr
+        PublicSubnet2Cidr: !Ref PublicSubnet2Cidr
+        PrivateSubnet1Cidr: !Ref PrivateSubnet1Cidr
+        PrivateSubnet2Cidr: !Ref PrivateSubnet2Cidr
+      
+  SGs:
+    DependsOn: VPCStack
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "https://${BucketName}.s3.us-east-2.amazonaws.com/SGs.yml"
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        VPC: !GetAtt VPCStack.Outputs.VPC
+  
+  ALB:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "https://${BucketName}.s3.us-east-2.amazonaws.com/ALB.yml"
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName  
+        VPC: !GetAtt VPCStack.Outputs.VPC
+        PublicSubnet1: !GetAtt VPCStack.Outputs.PublicSubnet1
+        PublicSubnet2: !GetAtt VPCStack.Outputs.PublicSubnet2
+        ALBSecurityGroup: !GetAtt SGs.Outputs.ALBSecurityGroup
+    
+  ASG:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "https://${BucketName}.s3.us-east-2.amazonaws.com/ASG.yml"
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName  
+        MyKeyPair: !Ref MyKeyPair
+        VPC: !GetAtt VPCStack.Outputs.VPC 
+        PrivateSubnet1: !GetAtt VPCStack.Outputs.PrivateSubnet1
+        PrivateSubnet2: !GetAtt VPCStack.Outputs.PrivateSubnet2
+        ServerSecurityGroup: !GetAtt SGs.Outputs.ServerSecurityGroup
+        InternalLoadBalancer: !GetAtt CLB.Outputs.InternalLoadBalancer
+        TargetGroup: !GetAtt ALB.Outputs.TargetGroup
+
+  CLB:
+    DependsOn: SQL
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "https://${BucketName}.s3.us-east-2.amazonaws.com/CLB.yml"
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        VPC: !GetAtt VPCStack.Outputs.VPC
+        PrivateSubnet1: !GetAtt VPCStack.Outputs.PrivateSubnet1
+        PrivateSubnet2: !GetAtt VPCStack.Outputs.PrivateSubnet2
+        LBSecurityGroup: !GetAtt SGs.Outputs.LBSecurityGroup
+        SQLServerInstance: !GetAtt SQL.Outputs.SQLServerInstance
+
+  SQL:
+    DependsOn: SGs
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "https://${BucketName}.s3.us-east-2.amazonaws.com/SQL.yml"
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        MyKeyPair: !Ref MyKeyPair
+        VPC: !GetAtt VPCStack.Outputs.VPC
+        PrivateSubnet1: !GetAtt VPCStack.Outputs.PrivateSubnet1
+        SQLSecurityGroup: !GetAtt SGs.Outputs.SQLSecurityGroup

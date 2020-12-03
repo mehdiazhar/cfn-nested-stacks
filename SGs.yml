@@ -1,0 +1,103 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+
+Parameters:
+  EnvironmentName: 
+    Type: String
+
+  VPC:
+    Type: String
+
+Resources:
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ALBSecurityGroup
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80 
+          ToPort: 80
+          CidrIp: 0.0.0.0/0 
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-ALBSG
+
+  ServerSecurityGroup:
+    DependsOn: ALBSecurityGroup
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ServerSecurityGroup
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          SourceSecurityGroupId:
+            !GetAtt
+            - ALBSecurityGroup
+            - GroupId
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-ServerSG
+  
+  LBSecurityGroup:
+    DependsOn: ServerSecurityGroup
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: LBSecurityGroup
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          SourceSecurityGroupId:
+            !GetAtt
+            - ServerSecurityGroup
+            - GroupId 
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-LBSG
+
+  SQLSecurityGroup:
+    DependsOn: LBSecurityGroup
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SQLSecurityGroup
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          SourceSecurityGroupId:
+            !GetAtt
+            - LBSecurityGroup
+            - GroupId
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-SQLSG
+
+Outputs:
+  ALBSecurityGroup:
+    Description: ALB SG
+    Value: !Ref ALBSecurityGroup
+    Export:
+        Name: !Sub ${AWS::StackName}-ALBSecurityGroup
+
+  ServerSecurityGroup:
+    Description: Server SG
+    Value: !Ref ServerSecurityGroup
+    Export:
+        Name: !Sub ${AWS::StackName}-ServerSecurityGroup 
+  
+  LBSecurityGroup:
+    Description: CLB SG
+    Value: !Ref LBSecurityGroup
+    Export:
+        Name: !Sub ${AWS::StackName}-LBSecurityGroup
+  
+  SQLSecurityGroup:
+    Description: SQL SG
+    Value: !Ref SQLSecurityGroup
+    Export:
+        Name: !Sub ${AWS::StackName}-SQLSecurityGroup

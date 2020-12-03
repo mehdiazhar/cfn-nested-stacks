@@ -1,0 +1,55 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+
+Parameters:
+  EnvironmentName:
+    Type: String
+
+  VPC:
+    Type: String
+
+  PrivateSubnet1:
+    Type: String
+
+  PrivateSubnet2:
+    Type: String
+  
+  LBSecurityGroup:
+    Type: String
+
+  SQLServerInstance:
+    Type: String
+  
+Resources:
+  InternalLoadBalancer:
+    Type: AWS::ElasticLoadBalancing::LoadBalancer
+    Properties:
+      LoadBalancerName: !Sub CLB-${EnvironmentName}
+      ConnectionDrainingPolicy:
+        Enabled: true
+        Timeout: 60
+      ConnectionSettings:
+        IdleTimeout: 60
+      Listeners:
+        - LoadBalancerPort: '80'
+          InstancePort: '80'
+          Protocol: HTTP
+        - InstancePort: 3306
+          InstanceProtocol: TCP
+          LoadBalancerPort: 3306
+          Protocol: TCP
+      Scheme: internal
+      Instances: 
+        - !Ref SQLServerInstance
+      Subnets:
+        - !Ref "PrivateSubnet1"
+        - !Ref "PrivateSubnet2"
+      SecurityGroups: 
+        - !Ref LBSecurityGroup
+
+Outputs:
+  InternalLoadBalancer:
+    Description: InternalLoadBalancer
+    Value: !GetAtt InternalLoadBalancer.DNSName
+    Export:
+        Name: !Sub ${AWS::StackName}-InternalLoadBalancer

@@ -1,0 +1,39 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+
+Parameters:
+  MyKeyPair:
+    Type: String
+
+  EnvironmentName:
+    Type: String
+
+  VPC:
+    Type: String
+
+  SQLSecurityGroup:
+    Type: String
+
+  PrivateSubnet1:
+    Type: String
+
+Resources:
+  SQLServerInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-03a2793c1d7985724
+      InstanceType: t2.micro
+      KeyName: !Ref MyKeyPair
+      SecurityGroupIds: 
+        - !Ref SQLSecurityGroup
+      SubnetId: !Ref PrivateSubnet1
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-SQL
+
+Outputs:
+  SQLServerInstance:
+    Description: SQL Server
+    Value: !Ref SQLServerInstance
+    Export:
+        Name: !Sub ${AWS::StackName}-SQLServerInstance
